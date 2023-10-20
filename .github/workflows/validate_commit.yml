@@ -18,7 +18,7 @@ jobs:
       - run: git fetch
       - name: Validate commit messages
         run: |
-          commits=$(git log --format=%B ${{ github.event.pull_request.base.sha }}..${{ github.sha }})
+          commits=$(git log --no-merges --format=%B ${{ github.event.pull_request.base.sha }}..${{ github.sha }})
           for commit in "$commits"; do
             echo "Handling commit: $commit"
             echo "$commit" | grep -E '^(FEATURE|IMPROVEMENT|BUG)\(TICKET-[0-9]{4}\): .{1,}$' || exit 1
