@@ -2,7 +2,7 @@ name: Validate Commit message
 
 on:
   pull_request:
-    types: [synchronize, ready_for_review]
+    types: [opened, synchronize, ready_for_review]
     # branches: [master, release**]
     branches: [master]
 
@@ -15,11 +15,12 @@ jobs:
         with:
           token: ${{ secrets.PA_TOKEN }}
           fetch-depth: 0
+      - run: git fetch
       - name: Validate commit messages
         run: |
           commits=$(git log --format=%B ${{ github.event.pull_request.base.sha }}..${{ github.sha }})
-
           for commit in "$commits"; do
+            echo "Handling commit: $commit"
             echo "$commit" | grep -E '^(FEATURE|IMPROVEMENT|BUG)\(TICKET-[0-9]{4}\): .{1,}$' || exit 1
             echo "$commit" | awk 'NR==2 { exit ($0 != "" ? 1 : 0) }' # Check for a blank second line
 
