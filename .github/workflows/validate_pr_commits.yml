@@ -18,6 +18,5 @@ jobs:
         with:
           token: ${{ secrets.PA_TOKEN }}
           fetch-depth: 0
-      - run: git fetch
       - name: Validate commit messages
-        run: ./validate_commits.sh ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}
+        run: /bin/bash ./validate_commits.sh ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}

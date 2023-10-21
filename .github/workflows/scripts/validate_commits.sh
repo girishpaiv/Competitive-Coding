@@ -1,66 +1,84 @@
 #!/bin/bash
 
-# Range of commits to verify
+# This script is used to validate commit messages as per the convensions documented in
+# https://nferx.atlassian.net/wiki/spaces/SIG/pages/2067235345/GIT+Conventions
+# In short,
+# Title must be on a single line
+# Title must mention a type denoting reason for the change. Valid types are
+#  - FEAT   - To implement a Feature
+#  - BUG    - To fix a bug identified in the code
+#  - IMPR   - To Improve the code be it refactor, cleanup or any sort of improvement
+#  - DEPLOY - Deployment related changes like version updates etc
+# Title format: <TYPE>(TICKET):<space>Title
+# Body is optional but is recommended if it can add additional context
+# Title and body (if any) must be separated by a blank line
+# Every line in the message must be wrapped at max 72 characters
+
+# Range of commits to verify, this is provided by the caller
 commits_range="$1..$2"
 
 # Get commit SHAs within the range
 commit_shas=$(git log --no-merges --format="%H" $commits_range)
 
-declare -a commit_msgs
+declare -a failed_commits
+declare -a failed_commits_errors
+all_pass=1  # True
 
-pass=1
-failed_commmits=()
-failed_commmits_errors=()
+# Loop through commits and verify!
 for sha in $commit_shas; do
-  
-  commit_msg=$(git log --format="%B" -n 1 $sha)  # Fetch the commit message for the current SHA
+  commit_msg=$(git log --format="%B" -n 1 $sha)  # Fetch the commit message from SHA
   title=$(echo "$commit_msg" | awk 'NR==1{print; exit}')
-  printf "\nChecking commit $sha:\n$commit_msg\n"
+  printf "\n\n== Checking commit ## $sha\n$commit_msg\n"
 
-  if ! echo "$commit_msg" | grep -qE '^(FEAT|IMPR|BUG|DEPLOY)\((SIG|HYC)-[0-9]{4,5}\): .'; then
+  # Check Title format
+  # TODO: IMPROVEMENT and FEATURE are kept for backward compatibility. Remove once all PRs are having the new types
+  if ! echo "$title" | grep -qE '^(IMPROVEMENT|FEATURE|FEAT|IMPR|BUG|DEPLOY)\((SIG|HCB)-[0-9]{4,5}\): .'; then
     failed_commits+=("$sha: $title")
-    failed_commmits_errors+=("Incorrect title format")
-    pass=0
-  fi
-  
-  if ! echo "$commit_msg" | grep -qE '^.{1,71}$'; then
-    failed_commits+=("$sha: $title")
-    failed_commmits_errors+=("Incorrect length of title (Max 72 characters)")
-    pass=0
+    failed_commits_errors+=("Incorrect title format")
+    echo "After appending: ${failed_commits[@]}"
+    all_pass=0
+    continue
   fi
 
-  # If a 2nd line exist in commit message, confirm it is a blank line
+  # Check Title length
+  if ! echo "$title" | grep -qE '^.{1,71}$'; then
+    failed_commits+=("$sha: $title")
+    failed_commits_errors+=("Incorrect length of title (Max 72 characters)")
+    all_pass=0
+    continue
+  fi
+
+  # If 2nd line exists, confirm it is blank
   if ! echo "$commit_msg" | awk 'NR==2 { exit ($0 != "" ? 1 : 0) }'; then
     failed_commits+=("$sha: $title")
-    failed_commmits_errors+=("Second line is not blank")
-    pass=0
+    failed_commits_errors+=("Second line is not blank")
+    all_pass=0
+    continue
   fi
 
-  # If a body exist, ensure it is wrapped in 72 characters
+  # If a body exist, ensure every line is wrapped at 72 characters
   body=$(echo "$commit_msg" | sed -n '3,$p')
-  echo "$body"
   if [ ! -z "$body" ]; then
-    echo "$body exists!"
-    echo "$body" | while IFS= read -r line; do
-      echo "line: $line"
+    while IFS= read -r line; do
       if ! [ ${#line} -lt 72 ]; then
         failed_commits+=("$sha: $title")
-        failed_commmits_errors+=("Body is not wrapped at 72 characters")
-        pass=0
-        break;
+        failed_commits_errors+=("Body is not wrapped at 72 characters")
+        all_pass=0
       fi
-    done
+    done <<< "$body"
   fi
 done
 
-if [ "$pass" -eq 1 ]; then
-  printf "\n=======\n  PASS!!!\n=======\n"
+# Print Final result
+if [ "$all_pass" -eq 1 ]; then
+  printf "\n==============\n Final Result: PASS !!!\n==============\n"
 else
-  printf "\n=======\n  FAIL!!!\n=======\n"
+  printf "\n==============\n Final Result: FAIL !!!\n==============\n"
   printf "\nCommits with errors:\n"
   length=${#failed_commits[@]}
   for ((i=0; i<$length; i++)); do
-    echo "${failed_commits[$i]}:         ${failed_commmits_errors[$i]}"
+    echo "${failed_commits[$i]}:         ${failed_commits_errors[$i]}"
   done
+  printf "Please follow conventions on commit messages. Details here: https://nferx.atlassian.net/wiki/spaces/SIG/pages/2067235345/GIT+Conventions"
   exit 1
 fi
