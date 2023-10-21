@@ -1,55 +1,51 @@
 #!/bin/bash
 
-PR_BASE_BRANCH_COMMIT=$1
-PR_LAST_COMMIT=$2
+# Range of commits to verify
+commits_range="$1..$2"
 
-commits=$(git log --no-merges --format=%B $PR_BASE_BRANCH_COMMIT..$PR_LAST_COMMIT)
+# Get commit SHAs within the range
+commit_shas=$(git log --no-merges --format="%H" $commits_range)
 
-echo "PR has ${#commits[@]} commit(s)"
-
-for commit in "$commits"; do
-  printf "$commit\n"
-done
-exit 0
+declare -a commit_msgs
 
 pass=1
-failed_commmit_titles=()
-failed_commmit_error=()
-for commit in "$commits"; do
-  printf "Handling commit: \n$commit\n"
+failed_commmits=()
+failed_commmits_errors=()
+for sha in $commit_shas; do
+  
+  commit_msg=$(git log --format="%B" -n 1 $sha)  # Fetch the commit message for the current SHA
+  title=$(echo "$commit_msg" | awk 'NR==1{print; exit}')
+  printf "\nChecking commit $sha:\n$commit_msg\n"
 
-  title=$(echo "$commit" | awk 'NR==1{print; exit}')
-
-  if ! echo "$commit" | grep -qE '^(FEAT|IMPR|BUG|DEPLOY)\((SIG|HYC)-[0-9]{4,5}\): .'; then
-    echo "Commit title format is incorrect!"
-    failed_commit_titles+=($title)
-    failed_commmit_error+=("Incorrect title format")
+  if ! echo "$commit_msg" | grep -qE '^(FEAT|IMPR|BUG|DEPLOY)\((SIG|HYC)-[0-9]{4,5}\): .'; then
+    failed_commits+=("$sha: $title")
+    failed_commmits_errors+=("Incorrect title format")
     pass=0
   fi
   
-  if ! echo "$commit" | grep -qE '^.{1,71}$'; then
-    echo "Commit title must be at max 72 characters"
-    failed_commit_titles+=($title)
-    failed_commmit_error+=("Incorrect length of title (Max 72 characters)")
+  if ! echo "$commit_msg" | grep -qE '^.{1,71}$'; then
+    failed_commits+=("$sha: $title")
+    failed_commmits_errors+=("Incorrect length of title (Max 72 characters)")
     pass=0
   fi
 
   # If a 2nd line exist in commit message, confirm it is a blank line
-  if ! echo "$commit" | awk 'NR==2 { exit ($0 != "" ? 1 : 0) }'; then
-    echo "Commit message must have a blank like between title and body"
-    failed_commit_titles+=($title)
-    failed_commmit_error+=("Second line is not blank")
+  if ! echo "$commit_msg" | awk 'NR==2 { exit ($0 != "" ? 1 : 0) }'; then
+    failed_commits+=("$sha: $title")
+    failed_commmits_errors+=("Second line is not blank")
     pass=0
   fi
 
   # If a body exist, ensure it is wrapped in 72 characters
-  body=$(echo "$commit" | sed -n '3,$p')
+  body=$(echo "$commit_msg" | sed -n '3,$p')
+  echo "$body"
   if [ ! -z "$body" ]; then
+    echo "$body exists!"
     echo "$body" | while IFS= read -r line; do
+      echo "line: $line"
       if ! [ ${#line} -lt 72 ]; then
-        echo "Body is not wrapped at 72 characters: $line"
-        failed_commit_titles+=($title)
-        failed_commmit_error+=("Body is not wrapped at 72 characters")
+        failed_commits+=("$sha: $title")
+        failed_commmits_errors+=("Body is not wrapped at 72 characters")
         pass=0
         break;
       fi
@@ -58,12 +54,13 @@ for commit in "$commits"; do
 done
 
 if [ "$pass" -eq 1 ]; then
-  printf "\nPASS!!!\n"
+  printf "\n=======\n  PASS!!!\n=======\n"
 else
-  printf "Failed! Commits with errors:\n"
-  length=${#failed_commit_titles[@]}
+  printf "\n=======\n  FAIL!!!\n=======\n"
+  printf "\nCommits with errors:\n"
+  length=${#failed_commits[@]}
   for ((i=0; i<$length; i++)); do
-    echo "${failed_commit_titles[$i]} ${failed_commmit_error[$i]}"
+    echo "${failed_commits[$i]}:         ${failed_commmits_errors[$i]}"
   done
   exit 1
 fi
