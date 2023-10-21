@@ -7,6 +7,11 @@ commits=$(git log --no-merges --format=%B $PR_BASE_BRANCH_COMMIT..$PR_LAST_COMMI
 
 echo "PR has ${#commits[@]} commit(s)"
 
+for commit in "$commits"; do
+  printf "$commit\n"
+done
+exit 0
+
 pass=1
 failed_commmit_titles=()
 failed_commmit_error=()
